@@ -277,15 +277,29 @@ function readGamepad(index) {
 }
 
 // ---------- Human command builders ----------
+// P1 is the first-person viewpoint, so their movement is relative to which
+// way the camera is actually looking (forward = into the view, strafe =
+// sideways), not fixed world axes — otherwise "forward" only lines up with
+// the camera by coincidence, and can just as easily walk you sideways off
+// the platform. rawCommandP1 returns raw forward/strafe axes; the main loop
+// converts them to world-space moveX/moveZ using the camera's basis.
 function rawCommandP1() {
   const gp = readGamepad(0);
-  if (gp) return gp;
-  const moveX = (input.isDown('ArrowRight') ? 1 : 0) - (input.isDown('ArrowLeft') ? 1 : 0);
-  const moveZ = (input.isDown('ArrowDown') ? 1 : 0) - (input.isDown('ArrowUp') ? 1 : 0);
+  if (gp) {
+    return {
+      forwardInput: -gp.moveZ,
+      strafeInput: gp.moveX,
+      jumpPressed: gp.jumpPressed,
+      brace: gp.brace,
+      stick: gp.stick,
+    };
+  }
+  const forwardInput = (input.isDown('ArrowUp') ? 1 : 0) - (input.isDown('ArrowDown') ? 1 : 0);
+  const strafeInput = (input.isDown('ArrowRight') ? 1 : 0) - (input.isDown('ArrowLeft') ? 1 : 0);
   const jumpPressed = input.justPressed('Space');
   const brace = input.isDown('ShiftLeft');
   const stick = input.getMouseStick();
-  return { moveX, moveZ, jumpPressed, brace, stick };
+  return { forwardInput, strafeInput, jumpPressed, brace, stick };
 }
 
 function rawCommandP2Human() {
@@ -411,6 +425,13 @@ function loop(now) {
   updateCamera(dt);
   const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
   const camUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  // Horizontal-only forward (camera look direction with pitch removed), so
+  // walking "forward" moves along the ground even though the camera itself
+  // tilts down slightly to frame the opponent.
+  const camForwardFlat = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 2).multiplyScalar(-1);
+  camForwardFlat.y = 0;
+  if (camForwardFlat.lengthSq() > 1e-8) camForwardFlat.normalize();
+  else camForwardFlat.set(0, 0, -1);
 
   const raw1 = rawCommandP1();
   updateViewWeapon(dt, raw1.stick);
@@ -419,8 +440,8 @@ function loop(now) {
 
   if (game.state === STATE.PLAYING) {
     const cmd1 = {
-      moveX: raw1.moveX,
-      moveZ: raw1.moveZ,
+      moveX: camForwardFlat.x * raw1.forwardInput + camRight.x * raw1.strafeInput,
+      moveZ: camForwardFlat.z * raw1.forwardInput + camRight.z * raw1.strafeInput,
       jumpPressed: raw1.jumpPressed,
       brace: raw1.brace,
       aimVector3: buildAimVector3(raw1.stick, camRight, camUp),
