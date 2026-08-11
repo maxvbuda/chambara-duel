@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Chambara Duel</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚔️</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="game" width="1280" height="720"></canvas>
+
+    <div id="overlay" class="screen">
+      <div class="panel" id="menuPanel">
+        <h1>CHAMBARA <span class="accent">DUEL</span></h1>
+        <p class="subtitle">Swing your weapon. Knock them off the platform. Last duelist standing wins.</p>
+
+        <div class="menu-options">
+          <button class="btn" data-mode="cpu">1P vs CPU</button>
+          <button class="btn" data-mode="2p">2P Local Duel</button>
+          <button class="btn secondary" id="howToPlayBtn">How to Play</button>
+        </div>
+
+        <div class="score-target">
+          Points to win:
+          <button class="chip" data-points="3">3</button>
+          <button class="chip active" data-points="5">5</button>
+          <button class="chip" data-points="7">7</button>
+        </div>
+      </div>
+
+      <div class="panel hidden" id="howToPanel">
+        <h2>How to Duel</h2>
+        <div class="controls-grid">
+          <div class="controls-col">
+            <h3>Player 1</h3>
+            <ul>
+              <li><kbd>A</kbd>/<kbd>D</kbd> — Move</li>
+              <li><kbd>W</kbd> — Jump</li>
+              <li>Move the mouse to aim your weapon — swing it in an arc to attack</li>
+              <li><kbd>Shift</kbd> — Brace (block)</li>
+            </ul>
+          </div>
+          <div class="controls-col">
+            <h3>Player 2 / CPU</h3>
+            <ul>
+              <li><kbd>←</kbd>/<kbd>→</kbd> — Move</li>
+              <li><kbd>↑</kbd> — Jump</li>
+              <li><kbd>I</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> — Aim weapon (tap through directions to swing)</li>
+              <li><kbd>Ctrl</kbd> — Brace (block)</li>
+            </ul>
+          </div>
+        </div>
+        <p class="tip">There's no separate "attack" button — your weapon follows your aim like a real swing. The faster you whip it around, the harder it hits. Fall off the platform and your rival scores. Gamepads work too: left stick to move, right stick to swing, A to jump, shoulder button to brace.</p>
+        <button class="btn" id="backBtn">Back</button>
+      </div>
+    </div>
+
+    <div id="hud" class="hidden">
+      <div class="hud-side left">
+        <div class="name" id="p1Name">P1</div>
+        <div class="pips" id="p1Pips"></div>
+      </div>
+      <div class="hud-center" id="roundBanner"></div>
+      <div class="hud-side right">
+        <div class="name" id="p2Name">P2</div>
+        <div class="pips" id="p2Pips"></div>
+      </div>
+    </div>
+
+    <div id="pauseHint" class="hidden">Esc — Menu</div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
