@@ -1,28 +1,28 @@
 # Chambara Duel
 
-A browser-based, physics-driven weapon duel inspired by *1-2-Switch*'s **Chambara** minigame — swing your weapon like a Joy-Con, knock your rival off the platform, first to score wins.
+A browser-based, physics-driven 3D weapon duel inspired by *1-2-Switch*'s **Chambara** minigame — swing your weapon like a Joy-Con, knock your rival off the floating platform, first to score wins.
 
-Pure vanilla HTML5 canvas + JavaScript, no build step, no dependencies. Open `index.html` or serve the folder statically and play.
+Rendered in full 3D with [Three.js](https://threejs.org/) (WebGL) — real-time shadows, ACES tone mapping, bloom post-processing, a dynamic tracking camera, and particle effects — loaded straight from a CDN via an import map, so it's still a static site: no build step, no npm install. Open `index.html` or serve the folder statically and play.
 
 ▶️ **[Play it live](https://maxvbuda.github.io/chambara-duel/)**
 
 ## How it works
 
-There's no "attack" button. Your weapon is spring-mounted to your hand and always chases wherever you're aiming — move the mouse (or a stick) in an arc and the weapon swings with real angular velocity. Swing fast enough and it becomes a live hit; the faster the swing, the harder the knockback. It's the same physical, motion-control feel as the original Joy-Con game, translated to mouse/keyboard/gamepad.
+There's no "attack" button. Your weapon is spring-mounted to your hand and always chases wherever you're aiming — move the mouse (or a stick) in an arc and the weapon swings with real angular velocity, now fully in 3D. Swing fast enough and it becomes a live hit, complete with a glowing motion trail, a spark burst, and camera shake; the faster the swing, the harder the knockback. It's the same physical, motion-control feel as the original Joy-Con game, translated to mouse/keyboard/gamepad.
 
-Get knocked off the floating platform and your opponent scores a point. First to the target score (3/5/7, selectable in the menu) wins the match.
+The arena is a fully 3D floating stage — circle your rival instead of just strafing left and right. A Smash-style camera dynamically zooms and reframes based on how far apart the two duelists are. Get knocked off the platform and your opponent scores a point. First to the target score (3/5/7, selectable in the menu) wins the match.
 
 ## Controls
 
 **Player 1**
-- `A` / `D` — move
-- `W` — jump
+- `W` `A` `S` `D` — move (full 3D — strafe and step in/out)
+- `Space` — jump
 - Mouse — aim & swing your weapon
 - `Shift` — brace (block, cancels most knockback)
 
 **Player 2** *(or CPU in 1P mode)*
-- `←` / `→` — move
-- `↑` — jump
+- `↑` `↓` `←` `→` — move (full 3D)
+- Right `Shift` — jump
 - `I` / `J` / `K` / `L` — aim & swing your weapon
 - `Ctrl` — brace (block)
 
@@ -49,14 +49,16 @@ Or just open `index.html` directly in a browser.
 ## Project structure
 
 ```
-index.html        Menu / HUD / canvas shell
+index.html        Menu / HUD shell, canvas, Three.js import map
 style.css         Menu and HUD styling
 src/
-  main.js         Game loop, state machine, input wiring, AI, rendering
-  player.js        Player physics, weapon spring simulation, hit detection
-  arena.js         Stage geometry and background rendering
-  input.js         Keyboard / mouse / gamepad input handling
-  utils.js         Small math helpers
+  main.js         Scene/renderer/camera setup, game loop, state machine, input wiring, AI
+  player.js       3D player physics, weapon spring simulation (vector-based), hit detection
+  character.js    Builds the stylized low-poly duelist mesh + weapon
+  arena.js        3D stage geometry, sky, mountains, lighting
+  effects.js      Weapon trails, hit sparks, ambient dust particles
+  input.js        Keyboard / mouse / gamepad input handling
+  utils.js        Small math helpers (2D and 3D)
 ```
 
 ## License

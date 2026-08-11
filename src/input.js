@@ -4,33 +4,37 @@ export default class InputManager {
     this.canvas = canvas;
     this.keys = new Set();
     this.prevKeys = new Set();
-    this.mouse = { x: 640, y: 360, down: false };
+    // Raw viewport-relative mouse position; converted to a -1..1 stick by
+    // the caller using the canvas's current bounding rect.
+    this.mouse = { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 };
 
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code);
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+      if (
+        ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftRight'].includes(e.code)
+      ) {
         e.preventDefault();
       }
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    canvas.addEventListener('mousemove', (e) => this._updateMouse(e));
-    canvas.addEventListener('mousedown', (e) => {
-      this.mouse.down = true;
-      e.preventDefault();
+    window.addEventListener('mousemove', (e) => {
+      this.mouse.clientX = e.clientX;
+      this.mouse.clientY = e.clientY;
     });
-    window.addEventListener('mouseup', () => (this.mouse.down = false));
-    window.addEventListener('blur', () => {
-      this.keys.clear();
-      this.mouse.down = false;
-    });
+    window.addEventListener('blur', () => this.keys.clear());
   }
 
-  _updateMouse(e) {
+  // Normalized aim stick in [-1, 1] on each axis, relative to canvas center.
+  getMouseStick() {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / rect.width;
-    const scaleY = this.canvas.height / rect.height;
-    this.mouse.x = (e.clientX - rect.left) * scaleX;
-    this.mouse.y = (e.clientY - rect.top) * scaleY;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const x = (this.mouse.clientX - cx) / (rect.width / 2);
+    const y = (this.mouse.clientY - cy) / (rect.height / 2);
+    const mag = Math.hypot(x, y);
+    if (mag < 0.06) return { x: 0, y: 0 };
+    const clampedMag = Math.min(mag, 1.6);
+    return { x: (x / mag) * clampedMag, y: (y / mag) * clampedMag };
   }
 
   isDown(code) {

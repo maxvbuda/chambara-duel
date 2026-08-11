@@ -1,10 +1,16 @@
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
 import InputManager from './input.js';
-import { ARENA, WIDTH, HEIGHT, drawArena } from './arena.js';
-import { Player, BODY_RADIUS, WEAPON_LENGTH } from './player.js';
-import { clamp, dist, randRange } from './utils.js';
+import { buildArenaScene } from './arena.js';
+import { Player } from './player.js';
+import { EffectsManager } from './effects.js';
+import { clamp, randRange } from './utils.js';
 
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
 const input = new InputManager(canvas);
 
 const overlay = document.getElementById('overlay');
@@ -18,11 +24,11 @@ const p2NameEl = document.getElementById('p2Name');
 const p1PipsEl = document.getElementById('p1Pips');
 const p2PipsEl = document.getElementById('p2Pips');
 
-const STATE = { MENU: 'menu', HOWTO: 'howto', PLAYING: 'playing', ROUND_END: 'round_end', MATCH_END: 'match_end' };
+const STATE = { MENU: 'menu', PLAYING: 'playing', ROUND_END: 'round_end', MATCH_END: 'match_end' };
 
 const game = {
   state: STATE.MENU,
-  mode: 'cpu', // 'cpu' | '2p'
+  mode: 'cpu',
   pointsToWin: 5,
   banner: '',
   bannerTimer: 0,
@@ -31,15 +37,88 @@ const game = {
   time: 0,
 };
 
-const p1 = new Player({ id: 0, name: 'PLAYER 1', color: '#38e0ff', spawnX: 460, spawnY: ARENA.top - BODY_RADIUS });
-const p2 = new Player({ id: 1, name: 'PLAYER 2', color: '#ff5c7a', spawnX: 820, spawnY: ARENA.top - BODY_RADIUS });
+// ---------- Three.js scene ----------
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 300);
 
-const gamepadState = {
-  0: { prevButtons: [] },
-  1: { prevButtons: [] },
-};
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-const aiState = { phase: 'approach', timer: 0, windupAngle: 0 };
+buildArenaScene(scene);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.5,
+  0.4,
+  0.86
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+function resize() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h, true);
+  composer.setSize(w, h);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- Players ----------
+const p1 = new Player({ id: 0, name: 'PLAYER 1', color: '#38e0ff', spawnX: -3.6, spawnZ: 0 });
+const p2 = new Player({ id: 1, name: 'PLAYER 2', color: '#ff5c7a', spawnX: 3.6, spawnZ: 0 });
+scene.add(p1.body, p1.weapon, p1.trail.line, p2.body, p2.weapon, p2.trail.line);
+
+const effects = new EffectsManager(scene);
+
+// ---------- Dynamic tracking camera ----------
+const CAM_DIR = new THREE.Vector3(0, 1, 1.35).normalize();
+const camPos = new THREE.Vector3(0, 7.5, 11);
+const camLookAt = new THREE.Vector3(0, 1.1, 0);
+camera.position.copy(camPos);
+camera.lookAt(camLookAt);
+camera.updateMatrixWorld();
+
+function updateCamera(dt) {
+  const mid = new THREE.Vector3().addVectors(p1.position, p2.position).multiplyScalar(0.5);
+  mid.y += 1.05;
+  const sep = p1.position.distanceTo(p2.position);
+  const dist = clamp(9.5 + sep * 0.62, 9.5, 17);
+  const desired = mid.clone().addScaledVector(CAM_DIR, dist);
+
+  camPos.lerp(desired, clamp(dt * 3.2, 0, 1));
+  camLookAt.lerp(mid, clamp(dt * 4.5, 0, 1));
+
+  let px = camPos.x;
+  let py = camPos.y;
+  let pz = camPos.z;
+  if (game.shake > 0) {
+    px += (Math.random() * 2 - 1) * game.shake * 0.02;
+    py += (Math.random() * 2 - 1) * game.shake * 0.02;
+    pz += (Math.random() * 2 - 1) * game.shake * 0.02;
+  }
+  camera.position.set(px, py, pz);
+  camera.lookAt(camLookAt);
+  camera.updateMatrixWorld();
+}
+
+function buildAimVector3(stick, camRight, camUp) {
+  if (!stick || (stick.x === 0 && stick.y === 0)) return null;
+  const v = new THREE.Vector3();
+  v.addScaledVector(camRight, stick.x);
+  v.addScaledVector(camUp, -stick.y);
+  if (v.lengthSq() < 1e-8) return null;
+  return v;
+}
 
 // ---------- Menu wiring ----------
 document.querySelectorAll('[data-mode]').forEach((btn) => {
@@ -111,26 +190,9 @@ function renderPips() {
   }
 }
 
-// ---------- Resize / letterboxing ----------
-function resize() {
-  const targetRatio = WIDTH / HEIGHT;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  let cw, ch;
-  if (w / h > targetRatio) {
-    ch = h;
-    cw = h * targetRatio;
-  } else {
-    cw = w;
-    ch = w / targetRatio;
-  }
-  canvas.style.width = `${cw}px`;
-  canvas.style.height = `${ch}px`;
-}
-window.addEventListener('resize', resize);
-resize();
-
 // ---------- Gamepad helpers ----------
+const gamepadState = { 0: { prevButtons: [] }, 1: { prevButtons: [] } };
+
 function readGamepad(index) {
   const pad = input.getGamepad(index);
   if (!pad || !pad.connected) return null;
@@ -140,50 +202,50 @@ function readGamepad(index) {
   const bracePressed = buttons[4] || buttons[5] || buttons[7];
   st.prevButtons = buttons;
 
-  const dead = 0.2;
+  const dead = 0.18;
   const mx = Math.abs(pad.axes[0]) > dead ? pad.axes[0] : 0;
+  const mz = Math.abs(pad.axes[1]) > dead ? pad.axes[1] : 0;
   const ax = Math.abs(pad.axes[2]) > dead ? pad.axes[2] : 0;
   const ay = Math.abs(pad.axes[3]) > dead ? pad.axes[3] : 0;
 
-  return {
-    moveX: mx,
-    jumpPressed,
-    brace: bracePressed,
-    aimVector: ax !== 0 || ay !== 0 ? { x: ax, y: ay } : null,
-  };
+  return { moveX: mx, moveZ: mz, jumpPressed, brace: bracePressed, stick: { x: ax, y: ay } };
 }
 
 // ---------- Human command builders ----------
-function commandForP1() {
+function rawCommandP1() {
   const gp = readGamepad(0);
   if (gp) return gp;
-
   const moveX = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
-  const jumpPressed = input.justPressed('KeyW');
-  const brace = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
-  const aimVector = { x: input.mouse.x - p1.handX, y: input.mouse.y - p1.handY };
-  return { moveX, jumpPressed, brace, aimVector };
+  const moveZ = (input.isDown('KeyS') ? 1 : 0) - (input.isDown('KeyW') ? 1 : 0);
+  const jumpPressed = input.justPressed('Space');
+  const brace = input.isDown('ShiftLeft');
+  const stick = input.getMouseStick();
+  return { moveX, moveZ, jumpPressed, brace, stick };
 }
 
-function commandForP2Human() {
+function rawCommandP2Human() {
   const gp = readGamepad(1);
   if (gp) return gp;
-
   const moveX = (input.isDown('ArrowRight') ? 1 : 0) - (input.isDown('ArrowLeft') ? 1 : 0);
-  const jumpPressed = input.justPressed('ArrowUp');
+  const moveZ = (input.isDown('ArrowDown') ? 1 : 0) - (input.isDown('ArrowUp') ? 1 : 0);
+  const jumpPressed = input.justPressed('ShiftRight');
   const brace = input.isDown('ControlLeft') || input.isDown('ControlRight');
   const ax = (input.isDown('KeyL') ? 1 : 0) - (input.isDown('KeyJ') ? 1 : 0);
   const ay = (input.isDown('KeyK') ? 1 : 0) - (input.isDown('KeyI') ? 1 : 0);
-  const aimVector = ax !== 0 || ay !== 0 ? { x: ax, y: ay } : null;
-  return { moveX, jumpPressed, brace, aimVector };
+  return { moveX, moveZ, jumpPressed, brace, stick: { x: ax, y: ay } };
 }
 
-// ---------- Simple CPU AI ----------
+// ---------- Simple CPU AI (full 3D — aims true world-space directions) ----------
+const aiState = { phase: 'approach', timer: 0, windupDir: new THREE.Vector3(0, 1, -1) };
+
 function commandForCPU(dt) {
-  const dx = p1.x - p2.x;
-  const dy = p1.y - p2.y;
-  const distance = Math.abs(dx);
-  const dirToPlayer = Math.sign(dx) || 1;
+  const dx = p1.position.x - p2.position.x;
+  const dz = p1.position.z - p2.position.z;
+  const distXZ = Math.hypot(dx, dz) || 0.001;
+  const dirX = dx / distXZ;
+  const dirZ = dz / distXZ;
+  const perpX = -dirZ;
+  const perpZ = dirX;
 
   aiState.timer -= dt;
   if (aiState.timer <= 0) {
@@ -193,41 +255,51 @@ function commandForCPU(dt) {
     } else {
       aiState.phase = 'windup';
       aiState.timer = randRange(0.22, 0.42);
-      aiState.windupAngle = Math.atan2(-1, -dirToPlayer) + randRange(-0.3, 0.3);
+      aiState.windupDir
+        .set(-dirX + randRange(-0.6, 0.6), 0.6 + randRange(-0.3, 0.3), -dirZ + randRange(-0.6, 0.6))
+        .normalize();
     }
   }
 
   let moveX = 0;
-  if (distance > 150) moveX = dirToPlayer * 0.9;
-  else if (distance < 70) moveX = -dirToPlayer * 0.4;
-  else moveX = Math.sin(game.time * 2.3) * 0.3;
+  let moveZ = 0;
+  if (distXZ > 3.4) {
+    moveX = dirX * 0.9;
+    moveZ = dirZ * 0.9;
+  } else if (distXZ < 1.5) {
+    moveX = -dirX * 0.4;
+    moveZ = -dirZ * 0.4;
+  } else {
+    moveX = perpX * Math.sin(game.time * 2.1) * 0.4;
+    moveZ = perpZ * Math.sin(game.time * 2.1) * 0.4;
+  }
 
   let jumpPressed = false;
-  if (dy < -70 && p2.grounded && Math.random() < 0.02) jumpPressed = true;
+  if (p1.position.y - p2.position.y > 1.4 && p2.grounded && Math.random() < 0.02) jumpPressed = true;
   if (Math.random() < 0.004 && p2.grounded) jumpPressed = true;
 
-  let aimVector;
-  if (distance < 190) {
+  let aimVector3;
+  if (distXZ < 4.2) {
     if (aiState.phase === 'windup') {
-      aimVector = { x: Math.cos(aiState.windupAngle), y: Math.sin(aiState.windupAngle) };
+      aimVector3 = aiState.windupDir;
     } else {
-      aimVector = { x: dx, y: dy - 30 };
+      aimVector3 = new THREE.Vector3(dx, p1.position.y - p2.position.y + 0.6, dz);
     }
   } else {
-    aimVector = { x: dirToPlayer, y: -0.4 };
+    aimVector3 = new THREE.Vector3(dirX, -0.3, dirZ);
   }
 
   let brace = false;
-  if (distance < 150 && p1.isSwingLive() && Math.random() < 0.6) brace = true;
+  if (distXZ < 3.2 && p1.isSwingLive() && Math.random() < 0.6) brace = true;
 
-  return { moveX, jumpPressed, brace, aimVector };
+  return { moveX, moveZ, jumpPressed, brace, aimVector3 };
 }
 
 // ---------- Round / match flow ----------
 function handleRoundEnd(loserPlayer, winnerPlayer) {
   winnerPlayer.score += 1;
   renderPips();
-  game.shake = 14;
+  game.shake = 16;
 
   if (winnerPlayer.score >= game.pointsToWin) {
     game.banner = `${winnerPlayer.name} WINS THE MATCH!`;
@@ -244,15 +316,17 @@ function handleRoundEnd(loserPlayer, winnerPlayer) {
 function resolveHits() {
   const hit12 = p1.checkHitAgainst(p2);
   if (hit12) {
-    p2.applyHit(hit12.strength, p1.handX, p1.handY);
+    p2.applyHit(hit12.strength, p1.handPos);
     p1.hasHitThisSwing = true;
-    game.shake = Math.max(game.shake, 6 + hit12.strength);
+    effects.spawnHit(hit12.point, p1.color);
+    game.shake = Math.max(game.shake, 6 + hit12.strength * 1.4);
   }
   const hit21 = p2.checkHitAgainst(p1);
   if (hit21) {
-    p1.applyHit(hit21.strength, p2.handX, p2.handY);
+    p1.applyHit(hit21.strength, p2.handPos);
     p2.hasHitThisSwing = true;
-    game.shake = Math.max(game.shake, 6 + hit21.strength);
+    effects.spawnHit(hit21.point, p2.color);
+    game.shake = Math.max(game.shake, 6 + hit21.strength * 1.4);
   }
 }
 
@@ -267,13 +341,38 @@ function loop(now) {
     game.bannerTimer -= dt;
     roundBannerEl.textContent = game.bannerTimer > 0 ? game.banner : '';
   }
-  if (game.shake > 0) game.shake = Math.max(0, game.shake - dt * 40);
+  if (game.shake > 0) game.shake = Math.max(0, game.shake - dt * 26);
+
+  updateCamera(dt);
+  const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  const camUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
 
   if (game.state === STATE.PLAYING) {
-    const cmd1 = commandForP1();
-    const cmd2 = game.mode === 'cpu' ? commandForCPU(dt) : commandForP2Human();
-    p1.update(dt, cmd1);
-    p2.update(dt, cmd2);
+    const raw1 = rawCommandP1();
+    const cmd1 = {
+      moveX: raw1.moveX,
+      moveZ: raw1.moveZ,
+      jumpPressed: raw1.jumpPressed,
+      brace: raw1.brace,
+      aimVector3: buildAimVector3(raw1.stick, camRight, camUp),
+    };
+
+    let cmd2;
+    if (game.mode === 'cpu') {
+      cmd2 = commandForCPU(dt);
+    } else {
+      const raw2 = rawCommandP2Human();
+      cmd2 = {
+        moveX: raw2.moveX,
+        moveZ: raw2.moveZ,
+        jumpPressed: raw2.jumpPressed,
+        brace: raw2.brace,
+        aimVector3: buildAimVector3(raw2.stick, camRight, camUp),
+      };
+    }
+
+    p1.update(dt, cmd1, p2.position);
+    p2.update(dt, cmd2, p1.position);
     resolveHits();
 
     if (!p1.alive) handleRoundEnd(p1, p2);
@@ -291,91 +390,10 @@ function loop(now) {
     }
   }
 
-  render();
+  effects.update(dt);
+  composer.render();
   input.endFrame();
   requestAnimationFrame(loop);
-}
-
-function drawPlayer(p) {
-  ctx.save();
-  if (!p.alive) {
-    ctx.restore();
-    return;
-  }
-
-  // Hit flash halo
-  if (p.hitFlash > 0) {
-    ctx.fillStyle = `rgba(255,255,255,${clamp(p.hitFlash / 0.18, 0, 1) * 0.6})`;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, BODY_RADIUS + 10, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Weapon
-  const tip = p.tip;
-  const live = p.isSwingLive();
-  ctx.strokeStyle = live ? '#ffe27a' : p.brace ? '#ffffff' : p.color;
-  ctx.lineWidth = live ? 8 : 6;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(p.handX, p.handY);
-  ctx.lineTo(tip.x, tip.y);
-  ctx.stroke();
-  ctx.fillStyle = live ? '#fff3c4' : '#dcdcdc';
-  ctx.beginPath();
-  ctx.arc(tip.x, tip.y, live ? 7 : 5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Guard crossbar near hand
-  const gx = p.handX + Math.cos(p.weaponAngle) * 18;
-  const gy = p.handY + Math.sin(p.weaponAngle) * 18;
-  const perp = p.weaponAngle + Math.PI / 2;
-  ctx.strokeStyle = '#c8b060';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(gx - Math.cos(perp) * 12, gy - Math.sin(perp) * 12);
-  ctx.lineTo(gx + Math.cos(perp) * 12, gy + Math.sin(perp) * 12);
-  ctx.stroke();
-
-  // Body
-  const bodyGrad = ctx.createRadialGradient(p.x - 8, p.y - 10, 4, p.x, p.y, BODY_RADIUS + 4);
-  bodyGrad.addColorStop(0, '#ffffff');
-  bodyGrad.addColorStop(0.25, p.color);
-  bodyGrad.addColorStop(1, '#0c0c14');
-  ctx.fillStyle = bodyGrad;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, BODY_RADIUS, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = p.brace ? '#ffffff' : 'rgba(0,0,0,0.4)';
-  ctx.lineWidth = p.brace ? 4 : 2;
-  ctx.stroke();
-
-  // Eye (facing indicator)
-  ctx.fillStyle = '#0b0b12';
-  ctx.beginPath();
-  ctx.arc(p.x + p.facing * 9, p.y - 4, 4.5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Name tag
-  ctx.font = 'bold 13px Segoe UI, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.fillText(p.name, p.x, p.y - BODY_RADIUS - 14);
-
-  ctx.restore();
-}
-
-function render() {
-  ctx.save();
-  const shakeX = game.shake ? randRange(-game.shake, game.shake) : 0;
-  const shakeY = game.shake ? randRange(-game.shake, game.shake) : 0;
-  ctx.translate(shakeX, shakeY);
-
-  drawArena(ctx, game.time);
-  drawPlayer(p1);
-  drawPlayer(p2);
-
-  ctx.restore();
 }
 
 requestAnimationFrame(loop);
