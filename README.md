@@ -15,13 +15,13 @@ The arena is a fully 3D floating stage — circle your rival instead of just str
 ## Controls
 
 **Player 1**
-- `W` `A` `S` `D` — move (full 3D — strafe and step in/out)
+- `↑` `↓` `←` `→` — move (full 3D — strafe and step in/out)
 - `Space` — jump
 - Mouse — aim & swing your weapon
 - `Shift` — brace (block, cancels most knockback)
 
 **Player 2** *(or CPU in 1P mode)*
-- `↑` `↓` `←` `→` — move (full 3D)
+- `↑` `↓` `←` `→` — move (full 3D) — note: same keys as Player 1, so 2P Local Duel currently has a control conflict
 - Right `Shift` — jump
 - `I` / `J` / `K` / `L` — aim & swing your weapon
 - `Ctrl` — brace (block)

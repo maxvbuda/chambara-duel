@@ -215,8 +215,8 @@ function readGamepad(index) {
 function rawCommandP1() {
   const gp = readGamepad(0);
   if (gp) return gp;
-  const moveX = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
-  const moveZ = (input.isDown('KeyS') ? 1 : 0) - (input.isDown('KeyW') ? 1 : 0);
+  const moveX = (input.isDown('ArrowRight') ? 1 : 0) - (input.isDown('ArrowLeft') ? 1 : 0);
+  const moveZ = (input.isDown('ArrowDown') ? 1 : 0) - (input.isDown('ArrowUp') ? 1 : 0);
   const jumpPressed = input.justPressed('Space');
   const brace = input.isDown('ShiftLeft');
   const stick = input.getMouseStick();
