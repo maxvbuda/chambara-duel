@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import InputManager from './input.js';
 import { buildArenaScene } from './arena.js';
 import { Player } from './player.js';
+import { createWeapon } from './character.js';
 import { EffectsManager } from './effects.js';
 import { clamp, randRange } from './utils.js';
 
@@ -39,7 +40,7 @@ const game = {
 
 // ---------- Three.js scene ----------
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 300);
+const camera = new THREE.PerspectiveCamera(66, window.innerWidth / window.innerHeight, 0.05, 300);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -76,35 +77,99 @@ resize();
 // ---------- Players ----------
 const p1 = new Player({ id: 0, name: 'PLAYER 1', color: '#38e0ff', spawnX: -3.6, spawnZ: 0 });
 const p2 = new Player({ id: 1, name: 'PLAYER 2', color: '#ff5c7a', spawnX: 3.6, spawnZ: 0 });
-scene.add(p1.body, p1.weapon, p1.trail.line, p2.body, p2.weapon, p2.trail.line);
+scene.add(p1.body, p2.body, p2.weapon, p2.trail.line);
 
 const effects = new EffectsManager(scene);
 
-// ---------- Dynamic tracking camera ----------
-const CAM_DIR = new THREE.Vector3(0, 1, 1.35).normalize();
-const camPos = new THREE.Vector3(0, 7.5, 11);
-const camLookAt = new THREE.Vector3(0, 1.1, 0);
+// P1's real world-space weapon/trail sit right next to the first-person
+// camera and would clip horribly if rendered directly, so they stay
+// hidden — only used internally by player.js for hit-detection math.
+// What you actually see is a camera-anchored view-model weapon, the way
+// any first-person melee game keeps its weapon comfortably in frame.
+p1.weapon.visible = false;
+p1.trail.line.visible = false;
+
+scene.add(camera);
+const viewWeapon = createWeapon(p1.color);
+viewWeapon.weapon.position.set(0.3, -0.42, -0.95);
+viewWeapon.weapon.scale.setScalar(0.8);
+viewWeapon.parts.blade.castShadow = false;
+// A material tuned for how close this sits to the lens: at world scale
+// these read as a nice highlight, but a few centimeters from the camera
+// the same emissive values fill far more of the frame and blow out the
+// bloom, so the view-model gets its own, gentler glow.
+viewWeapon.parts.tipGlow.scale.setScalar(0.55);
+viewWeapon.parts.tipGlow.material.color.multiplyScalar(0.55);
+camera.add(viewWeapon.weapon);
+
+// The view-model has its own small local spring simulation (same feel as
+// the real weapon's swing physics in player.js) rather than mirroring the
+// real world-space weaponDir directly — that direction is meaningful in
+// world space but has no guaranteed relationship to "in front of the
+// camera," so reusing it verbatim could swing the blade back through the
+// camera itself. Driving a local copy from the same stick input keeps it
+// safely anchored in front of you while still feeling connected to your
+// swings.
+const VIEW_RIGHT = new THREE.Vector3(1, 0, 0);
+const VIEW_UP = new THREE.Vector3(0, 1, 0);
+const VIEW_FORWARD = new THREE.Vector3(0, 0, -1);
+const viewWeaponDir = new THREE.Vector3(0.2, -0.9, -0.4).normalize();
+let viewAngVel = 0;
+const VIEW_SPRING = 34;
+const VIEW_DAMPING = 5.5;
+
+function updateViewWeapon(dt, stick) {
+  let axis = null;
+  if (stick && (stick.x !== 0 || stick.y !== 0)) {
+    const targetDir = VIEW_RIGHT.clone()
+      .multiplyScalar(stick.x)
+      .addScaledVector(VIEW_UP, -stick.y)
+      .addScaledVector(VIEW_FORWARD, 0.6)
+      .normalize();
+    const diff = viewWeaponDir.angleTo(targetDir);
+    if (diff > 1e-4) {
+      axis = new THREE.Vector3().crossVectors(viewWeaponDir, targetDir);
+      if (axis.lengthSq() < 1e-8) axis.copy(VIEW_UP).cross(viewWeaponDir);
+      axis.normalize();
+      viewAngVel += diff * VIEW_SPRING * dt;
+    }
+  }
+  viewAngVel -= viewAngVel * VIEW_DAMPING * dt;
+  if (viewAngVel < 0) viewAngVel = 0;
+  if (viewAngVel > 1e-5 && axis) {
+    const step = Math.min(viewAngVel * dt, Math.PI);
+    viewWeaponDir.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(axis, step)).normalize();
+  }
+  viewWeapon.weapon.quaternion.setFromUnitVectors(VIEW_UP, viewWeaponDir);
+}
+
+// ---------- First-person camera, locked to Player 1's own head ----------
+// You see the duel from your own viewpoint: the camera rides at your eye
+// height and looks toward your rival, the same way your body already
+// auto-faces them. Player 1's own body is hidden (see the render loop)
+// so it doesn't block the view — only your weapon is visible, swinging
+// out in front of you.
+const EYE_HEIGHT = 1.55;
+const camPos = new THREE.Vector3(p1.position.x, p1.position.y + EYE_HEIGHT, p1.position.z);
+const camLookAt = new THREE.Vector3(p2.position.x, p2.position.y + 0.85, p2.position.z);
 camera.position.copy(camPos);
 camera.lookAt(camLookAt);
 camera.updateMatrixWorld();
 
 function updateCamera(dt) {
-  const mid = new THREE.Vector3().addVectors(p1.position, p2.position).multiplyScalar(0.5);
-  mid.y += 1.05;
-  const sep = p1.position.distanceTo(p2.position);
-  const dist = clamp(9.5 + sep * 0.62, 9.5, 17);
-  const desired = mid.clone().addScaledVector(CAM_DIR, dist);
+  const eye = new THREE.Vector3(p1.position.x, p1.position.y + EYE_HEIGHT, p1.position.z);
+  const lookTarget = new THREE.Vector3(p2.position.x, p2.position.y + 0.85, p2.position.z);
 
-  camPos.lerp(desired, clamp(dt * 3.2, 0, 1));
-  camLookAt.lerp(mid, clamp(dt * 4.5, 0, 1));
+  camPos.lerp(eye, clamp(dt * 16, 0, 1));
+  camLookAt.lerp(lookTarget, clamp(dt * 10, 0, 1));
 
   let px = camPos.x;
   let py = camPos.y;
   let pz = camPos.z;
   if (game.shake > 0) {
-    px += (Math.random() * 2 - 1) * game.shake * 0.02;
-    py += (Math.random() * 2 - 1) * game.shake * 0.02;
-    pz += (Math.random() * 2 - 1) * game.shake * 0.02;
+    px += (Math.random() * 2 - 1) * game.shake * 0.015;
+    py += (Math.random() * 2 - 1) * game.shake * 0.015;
+    pz += (Math.random() * 2 - 1) * game.shake * 0.015;
   }
   camera.position.set(px, py, pz);
   camera.lookAt(camLookAt);
@@ -347,8 +412,12 @@ function loop(now) {
   const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
   const camUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
 
+  const raw1 = rawCommandP1();
+  updateViewWeapon(dt, raw1.stick);
+  viewWeapon.parts.bladeMat.emissiveIntensity = p1.parts.bladeMat.emissiveIntensity * 0.5;
+  viewWeapon.parts.guardMat.emissiveIntensity = p1.parts.guardMat.emissiveIntensity * 0.5;
+
   if (game.state === STATE.PLAYING) {
-    const raw1 = rawCommandP1();
     const cmd1 = {
       moveX: raw1.moveX,
       moveZ: raw1.moveZ,
@@ -389,6 +458,10 @@ function loop(now) {
       }
     }
   }
+
+  // Player 1 is always the viewpoint character — hide their own body so it
+  // doesn't block the first-person camera. Their weapon stays visible.
+  p1.body.visible = false;
 
   effects.update(dt);
   composer.render();

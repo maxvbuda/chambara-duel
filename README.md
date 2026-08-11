@@ -2,7 +2,7 @@
 
 A browser-based, physics-driven 3D weapon duel inspired by *1-2-Switch*'s **Chambara** minigame — swing your weapon like a Joy-Con, knock your rival off the floating platform, first to score wins.
 
-Rendered in full 3D with [Three.js](https://threejs.org/) (WebGL) — real-time shadows, ACES tone mapping, bloom post-processing, a dynamic tracking camera, and particle effects — loaded straight from a CDN via an import map, so it's still a static site: no build step, no npm install. Open `index.html` or serve the folder statically and play.
+Rendered in full 3D with [Three.js](https://threejs.org/) (WebGL) — real-time shadows, ACES tone mapping, bloom post-processing, a first-person camera, and particle effects — loaded straight from a CDN via an import map, so it's still a static site: no build step, no npm install. Open `index.html` or serve the folder statically and play.
 
 ▶️ **[Play it live](https://maxvbuda.github.io/chambara-duel/)**
 
@@ -10,7 +10,7 @@ Rendered in full 3D with [Three.js](https://threejs.org/) (WebGL) — real-time 
 
 There's no "attack" button. Your weapon is spring-mounted to your hand and always chases wherever you're aiming — move the mouse (or a stick) in an arc and the weapon swings with real angular velocity, now fully in 3D. Swing fast enough and it becomes a live hit, complete with a glowing motion trail, a spark burst, and camera shake; the faster the swing, the harder the knockback. It's the same physical, motion-control feel as the original Joy-Con game, translated to mouse/keyboard/gamepad.
 
-The arena is a fully 3D floating stage — circle your rival instead of just strafing left and right. A Smash-style camera dynamically zooms and reframes based on how far apart the two duelists are. Get knocked off the platform and your opponent scores a point. First to the target score (3/5/7, selectable in the menu) wins the match.
+You play from Player 1's own first-person viewpoint, the way you'd actually experience a duel — your own body is hidden so it doesn't block the view, and your weapon rests in the corner of the screen, ready to swing. The arena is a fully 3D floating stage — circle your rival instead of just strafing left and right. Get knocked off the platform and your opponent scores a point. First to the target score (3/5/7, selectable in the menu) wins the match.
 
 ## Controls
 
@@ -46,11 +46,17 @@ python3 -m http.server 8080
 
 Or just open `index.html` directly in a browser.
 
+## Deploying
+
+- **GitHub Pages** — already set up for this repo; pushes to `main` publish to the live link above.
+- **Render** — `render.yaml` in the repo root is a [Blueprint](https://render.com/docs/blueprint-spec) that deploys this as a static site with zero configuration. On Render, choose *New > Blueprint*, point it at this repo, and it picks up `render.yaml` automatically.
+
 ## Project structure
 
 ```
 index.html        Menu / HUD shell, canvas, Three.js import map
 style.css         Menu and HUD styling
+render.yaml       Render.com Blueprint for zero-config static deployment
 src/
   main.js         Scene/renderer/camera setup, game loop, state machine, input wiring, AI
   player.js       3D player physics, weapon spring simulation (vector-based), hit detection

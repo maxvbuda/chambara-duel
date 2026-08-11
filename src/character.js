@@ -96,8 +96,23 @@ export function createCharacter(color) {
   ring.position.y = 0.02;
   body.add(ring);
 
-  // --- Weapon: built at the origin, authored pointing along +Y so it can be
-  // oriented with a single setFromUnitVectors(UP, weaponDir) each frame. ---
+  const { weapon, parts: weaponParts, bladeLen } = createWeapon(color);
+
+  return {
+    body,
+    weapon,
+    parts: { legL, legR, torso, head, ring, ...weaponParts },
+    bladeLen,
+    color: accent,
+  };
+}
+
+// Weapon built at the origin, authored pointing along +Y so it can be
+// oriented with a single setFromUnitVectors(UP, weaponDir) each frame.
+// Used both as the real world-space weapon and as a camera-anchored
+// first-person view-model (see main.js).
+export function createWeapon(color) {
+  const accent = new THREE.Color(color);
   const weapon = new THREE.Group();
   const bladeLen = 1.1;
   const bladeMat = new THREE.MeshStandardMaterial({
@@ -140,11 +155,5 @@ export function createCharacter(color) {
   tipGlow.position.y = 0.16 + bladeLen;
   weapon.add(tipGlow);
 
-  return {
-    body,
-    weapon,
-    parts: { legL, legR, torso, head, ring, blade, bladeMat, guardMat, tipGlow },
-    bladeLen,
-    color: accent,
-  };
+  return { weapon, parts: { blade, bladeMat, guardMat, tipGlow }, bladeLen };
 }

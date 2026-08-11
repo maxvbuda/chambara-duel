@@ -1,0 +1,12 @@
+# Render Blueprint — deploys Chambara Duel as a static site.
+# https://render.com/docs/blueprint-spec
+#
+# No build step: the game is plain HTML/CSS/JS and loads Three.js from a
+# CDN via an import map, so "building" is a no-op.
+services:
+  - type: web
+    name: chambara-duel
+    runtime: static
+    buildCommand: "echo 'No build required'"
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false
