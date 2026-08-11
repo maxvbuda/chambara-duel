@@ -4,7 +4,7 @@ A browser-based, physics-driven weapon duel inspired by *1-2-Switch*'s **Chambar
 
 Pure vanilla HTML5 canvas + JavaScript, no build step, no dependencies. Open `index.html` or serve the folder statically and play.
 
-▶️ **[Play it live](#)** *(GitHub Pages link — see below)*
+▶️ **[Play it live](https://maxvbuda.github.io/chambara-duel/)**
 
 ## How it works
 
